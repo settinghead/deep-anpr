@@ -1,0 +1,6 @@
+/bgs
+/test
+/fonts
+*.tar.gz
+__pycache__
+.vscode

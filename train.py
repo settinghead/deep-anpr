@@ -1,17 +1,17 @@
 #!/usr/bin/env python
 #
 # Copyright (c) 2016 Matthew Earl
-# 
+#
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
 # in the Software without restriction, including without limitation the rights
 # to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 # copies of the Software, and to permit persons to whom the Software is
 # furnished to do so, subject to the following conditions:
-# 
+#
 #     The above copyright notice and this permission notice shall be included
 #     in all copies or substantial portions of the Software.
-# 
+#
 #     THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
 #     OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
 #     MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
@@ -96,7 +96,7 @@ def mpgen(f):
 
     @functools.wraps(f)
     def wrapped(*args, **kwargs):
-        q = multiprocessing.Queue(3) 
+        q = multiprocessing.Queue(3)
         proc = multiprocessing.Process(target=main,
                                        args=(q, args, kwargs))
         proc.start()
@@ -109,11 +109,12 @@ def mpgen(f):
             proc.join()
 
     return wrapped
-        
+
 
 @mpgen
 def read_batches(batch_size):
     g = gen.generate_ims()
+
     def gen_vecs():
         for im, c, p in itertools.islice(g, batch_size):
             yield im, code_to_vec(p, c)
@@ -125,11 +126,11 @@ def read_batches(batch_size):
 def get_loss(y, y_):
     # Calculate the loss from digits being incorrect.  Don't count loss from
     # digits that are in non-present plates.
-    digits_loss = tf.nn.softmax_cross_entropy_with_logits(
-                                          tf.reshape(y[:, 1:],
-                                                     [-1, len(common.CHARS)]),
-                                          tf.reshape(y_[:, 1:],
-                                                     [-1, len(common.CHARS)]))
+    digits_loss = tf.nn.softmax_cross_entropy_with_logits_v2(
+        labels=tf.reshape(y[:, 1:],
+                          [-1, len(common.CHARS)]),
+        logits=tf.reshape(y_[:, 1:],
+                          [-1, len(common.CHARS)]))
     digits_loss = tf.reshape(digits_loss, [-1, 7])
     digits_loss = tf.reduce_sum(digits_loss, 1)
     digits_loss *= (y_[:, 0] != 0)
@@ -137,7 +138,7 @@ def get_loss(y, y_):
 
     # Calculate the loss from presence indicator being wrong.
     presence_loss = tf.nn.sigmoid_cross_entropy_with_logits(
-                                                          y[:, :1], y_[:, :1])
+        labels=y[:, :1], logits=y_[:, :1])
     presence_loss = 7 * tf.reduce_sum(presence_loss)
 
     return digits_loss, presence_loss, digits_loss + presence_loss
@@ -196,18 +197,18 @@ def train(learn_rate, report_steps, batch_size, initial_weights=None):
                       loss],
                      feed_dict={x: test_xs, y_: test_ys})
         num_correct = numpy.sum(
-                        numpy.logical_or(
-                            numpy.all(r[0] == r[1], axis=1),
-                            numpy.logical_and(r[2] < 0.5,
-                                              r[3] < 0.5)))
+            numpy.logical_or(
+                numpy.all(r[0] == r[1], axis=1),
+                numpy.logical_and(r[2] < 0.5,
+                                  r[3] < 0.5)))
         r_short = (r[0][:190], r[1][:190], r[2][:190], r[3][:190])
         for b, c, pb, pc in zip(*r_short):
-            print "{} {} <-> {} {}".format(vec_to_plate(c), pc,
-                                           vec_to_plate(b), float(pb))
+            print("{} {} <-> {} {}".format(vec_to_plate(c), pc,
+                                           vec_to_plate(b), float(pb)))
         num_p_correct = numpy.sum(r[2] == r[3])
 
-        print ("B{:3d} {:2.02f}% {:02.02f}% loss: {} "
-               "(digits: {}, presence: {}) |{}|").format(
+        print("B{:3d} {:2.02f}% {:02.02f}% loss: {} "
+              "(digits: {}, presence: {}) |{}|").format(
             batch_idx,
             100. * num_correct / (len(r[0])),
             100. * num_p_correct / len(r[2]),
@@ -215,7 +216,7 @@ def train(learn_rate, report_steps, batch_size, initial_weights=None):
             r[4],
             r[5],
             "".join("X "[numpy.array_equal(b, c) or (not pb and not pc)]
-                                           for b, c, pb, pc in zip(*r_short)))
+                    for b, c, pb, pc in zip(*r_short)))
 
     def do_batch():
         sess.run(train_step,
@@ -223,7 +224,10 @@ def train(learn_rate, report_steps, batch_size, initial_weights=None):
         if batch_idx % report_steps == 0:
             do_report()
 
-    gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.95)
+    gpu_options = tf.GPUOptions(
+        # per_process_gpu_memory_fraction=0.95,
+        allow_growth=True
+    )
     with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options)) as sess:
         sess.run(init)
         if initial_weights is not None:
@@ -240,9 +244,9 @@ def train(learn_rate, report_steps, batch_size, initial_weights=None):
                 if batch_idx % report_steps == 0:
                     batch_time = time.time()
                     if last_batch_idx != batch_idx:
-                        print "time for 60 batches {}".format(
+                        print("time for 60 batches {}".format(
                             60 * (last_batch_time - batch_time) /
-                                            (last_batch_idx - batch_idx))
+                            (last_batch_idx - batch_idx)))
                         last_batch_idx = batch_idx
                         last_batch_time = batch_time
 
@@ -264,4 +268,3 @@ if __name__ == "__main__":
           report_steps=20,
           batch_size=50,
           initial_weights=initial_weights)
-
